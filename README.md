@@ -1,0 +1,4 @@
+# redisStudy
+基于redis分布式锁使用setnx特性实现
+在释放锁时确认是否为自己的锁，利用uuid和线程id拼接对比
+eval编译脚本文件设置原子性的释放锁
