@@ -8,8 +8,10 @@ import com.hmdp.service.ISeckillVoucherService;
 import com.hmdp.service.IVoucherOrderService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.utils.RedisldWorker;
+import com.hmdp.utils.SimpleRedisLock;
 import com.hmdp.utils.UserHolder;
 import org.springframework.aop.framework.AopContext;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,6 +33,8 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     private ISeckillVoucherService iSeckillVoucherService;
     @Resource
     private RedisldWorker redisldWorker;
+    @Resource
+    private StringRedisTemplate stringRedisTemplate;
 
     @Override
     public Result setkillVoucher(Long voucherId) {
@@ -52,11 +56,28 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         }
 
         //拿取用户id
+//        Long id = UserHolder.getUser().getId();
+//        synchronized (id.toString().intern()) {
+//
+//            IVoucherOrderService proxy =(IVoucherOrderService) AopContext.currentProxy();
+//            return proxy.createVoucherOrder(voucherId);
+//        }
+        //改进  使用redis锁
         Long id = UserHolder.getUser().getId();
-        synchronized (id.toString().intern()) {
 
-            IVoucherOrderService proxy =(IVoucherOrderService) AopContext.currentProxy();
+        //创建锁对象
+        SimpleRedisLock lock = new SimpleRedisLock("order" + id, stringRedisTemplate);
+
+        boolean isLock = lock.tryLock(1200);
+
+        if (!isLock) {
+            return Result.fail("一个用户只能购买一单！服务器繁忙");
+        }
+        try {
+            IVoucherOrderService proxy = (IVoucherOrderService) AopContext.currentProxy();
             return proxy.createVoucherOrder(voucherId);
+        }finally {
+            lock.unlock();
         }
     }
     @Transactional
